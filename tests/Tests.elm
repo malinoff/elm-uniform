@@ -3,118 +3,222 @@ module Tests exposing (..)
 import Expect
 import Test exposing (..)
 import Uniform
+import Uniform.Classic
 
 
-type alias Form =
-    { input : String }
+
+-- This example is taken from https://korban.net/posts/elm/2018-11-27-build-complex-forms-validation-elm/
 
 
-type Field
-    = Text (Uniform.Field String Form)
+type alias UserDetails =
+    { name : Maybe String
+    , email : Email
+    , password : Password
+    , plan : Plan
+    }
 
 
-textField =
-    Uniform.field { isEmpty = String.isEmpty, type_ = Text }
+type Email
+    = Email String
 
 
-classic : Test
-classic =
-    describe "classic"
-        [ test "returns an empty form that always produces the given output" <|
-            \_ ->
-                let
-                    form =
-                        Uniform.succeed ()
-                in
-                Uniform.fill form ()
-                    |> Expect.equal
-                        { fields = []
-                        , submit = Just ()
-                        }
-        ]
+type Password
+    = Password String
 
 
-text : Test
-text =
+type Plan
+    = Basic
+    | Pro
+    | Enterprise
+
+
+type alias SignupFormValues =
+    { name : String
+    , email : String
+    , password : String
+    , repeatedPassword : String
+    , plan : String
+    , agreedToTerms : Bool
+    }
+
+
+type alias SignupFormFields =
+    { name : Uniform.Field String (Maybe String) SignupFormValues
+    , email : Uniform.TextField Email SignupFormValues
+    , password : Uniform.TextField Password SignupFormValues
+    , repeatedPassword : Uniform.TextField () SignupFormValues
+    , plan : Uniform.TextField Plan SignupFormValues
+    , agreedToTerms : Uniform.Field Bool () SignupFormValues
+    }
+
+
+signupForm : Uniform.Form SignupFormValues SignupFormFields UserDetails
+signupForm =
     let
-        form =
-            textField
+        nameField : Uniform.FormField String String SignupFormValues
+        nameField =
+            Uniform.Classic.field
+                String.isEmpty
+                { parser = Ok
+                , value = .name
+                , update = \values value -> { values | name = value }
+                }
+
+        emailField : Uniform.FormField String Email SignupFormValues
+        emailField =
+            Uniform.Classic.textField
                 { parser =
                     \value ->
-                        if value == "bad input" then
-                            Err "Bad input!"
+                        if String.contains "@" value then
+                            Ok <| Email value
 
                         else
-                            Ok value
-                , value = .input
-                , update = \values value -> { values | input = value }
+                            Err "Invalid email"
+                , value = .email
+                , update = \values value -> { values | email = value }
+                }
+
+        passwordField : Uniform.FormField String Password SignupFormValues
+        passwordField =
+            Uniform.Classic.textField
+                { parser =
+                    \value ->
+                        if String.length value >= 6 then
+                            Ok <| Password value
+
+                        else
+                            Err "Invalid password"
+                , value = .password
+                , update = \values value -> { values | password = value }
+                }
+
+        repeatedPasswordField : Uniform.FormField String () SignupFormValues
+        repeatedPasswordField =
+            Uniform.dynamicField <|
+                \otherValues ->
+                    Uniform.Classic.textField
+                        { parser =
+                            \value ->
+                                if value == otherValues.password then
+                                    Ok ()
+
+                                else
+                                    Err "The passwords should match"
+                        , value = .repeatedPassword
+                        , update = \values value -> { values | repeatedPassword = value }
+                        }
+
+        planField =
+            Uniform.Classic.textField
+                { parser =
+                    \value ->
+                        case value of
+                            "Basic" ->
+                                Ok Basic
+
+                            "Pro" ->
+                                Ok Pro
+
+                            "Enterprise" ->
+                                Ok Enterprise
+
+                            _ ->
+                                Err "Wrong plan"
+                , value = .plan
+                , update = \values value -> { values | plan = value }
+                }
+
+        agreedToTermsField =
+            Uniform.Classic.field
+                (always False)
+                { parser =
+                    \value ->
+                        if value then
+                            Ok ()
+
+                        else
+                            Err "You must accept the terms"
+                , value = .agreedToTerms
+                , update = \values value -> { values | agreedToTerms = value }
                 }
     in
-    describe "text"
-        [ describe "when filled with a good value"
-            [ test "produces the given value" <|
-                \_ ->
-                    Uniform.fill form { input = "input" }
-                        |> .submit
-                        |> Expect.equal (Just "input")
-            , test "contains no errors" <|
-                \_ ->
-                    Uniform.fill form { input = "input" }
-                        |> Uniform.errors
-                        |> List.length
-                        |> Expect.equal 0
-            , test "is not empty" <|
-                \_ ->
-                    Uniform.fill form { input = "input" }
-                        |> Uniform.isEmpty
-                        |> Expect.equal False
-            ]
-        , describe "when filled with a bad value"
-            [ test "does not produce a value" <|
-                \_ ->
-                    Uniform.fill form { input = "bad input" }
-                        |> .submit
-                        |> Expect.equal Nothing
-            , test "contains the validation error" <|
-                \_ ->
-                    Uniform.fill form { input = "bad input" }
-                        |> Uniform.errors
-                        |> (\errors ->
-                                case errors of
-                                    [ error ] ->
-                                        Expect.equal (Uniform.ValidationFailed "Bad input!") error
+    (\name email password _ plan _ ->
+        UserDetails name email password plan
+    )
+        |> Uniform.succeed SignupFormFields
+        |> Uniform.append (Uniform.optional nameField)
+        |> Uniform.append emailField
+        |> Uniform.append passwordField
+        |> Uniform.append repeatedPasswordField
+        |> Uniform.append planField
+        |> Uniform.append agreedToTermsField
 
-                                    _ ->
-                                        Expect.fail "does not contain an error"
-                           )
-            , test "is not empty" <|
-                \_ ->
-                    Uniform.fill form { input = "bad input" }
-                        |> Uniform.isEmpty
-                        |> Expect.equal False
-            ]
-        , describe "when filled with an empty value"
-            [ test "does not produce a value" <|
-                \_ ->
-                    Uniform.fill form { input = "" }
-                        |> .submit
-                        |> Expect.equal Nothing
-            , test "contains the required field is missing error" <|
-                \_ ->
-                    Uniform.fill form { input = "" }
-                        |> Uniform.errors
-                        |> (\errors ->
-                                case errors of
-                                    [ error ] ->
-                                        Expect.equal Uniform.RequiredFieldIsEmpty error
 
-                                    _ ->
-                                        Expect.fail "does not contain an error"
-                           )
-            , test "is empty" <|
+goodSignupValues =
+    { name = "John Doe"
+    , email = "john@doe.com"
+    , password = "VerySecure"
+    , repeatedPassword = "VerySecure"
+    , plan = "Basic"
+    , agreedToTerms = True
+    }
+
+
+badSignupValues =
+    { name = ""
+    , email = "noway"
+    , password = ""
+    , repeatedPassword = "VerySecure"
+    , plan = "SuperDuper"
+    , agreedToTerms = False
+    }
+
+
+classicForm : Test
+classicForm =
+    describe "Typical \"classic\" signup form with static fields" <|
+        [ describe "when filled with good values" <|
+            [ test "produces the good output" <|
                 \_ ->
-                    Uniform.fill form { input = "" }
-                        |> Uniform.isEmpty
-                        |> Expect.equal True
+                    let
+                        expected : UserDetails
+                        expected =
+                            { name = Just "John Doe"
+                            , email = Email "john@doe.com"
+                            , password = Password "VerySecure"
+                            , plan = Basic
+                            }
+                    in
+                    Uniform.fill signupForm goodSignupValues
+                        |> .output
+                        |> Expect.equal (Just expected)
+            ]
+        , describe "when filled with bad values" <|
+            [ test "produces nothing" <|
+                \_ ->
+                    Uniform.fill signupForm badSignupValues
+                        |> .output
+                        |> Expect.equal Nothing
+            , test "fields contain the expected validation errors" <|
+                \_ ->
+                    Uniform.fill signupForm badSignupValues
+                        |> .fields
+                        |> (\f ->
+                                { name = f.name.output
+                                , email = f.email.output
+                                , password = f.password.output
+                                , repeatedPassword = f.repeatedPassword.output
+                                , plan = f.plan.output
+                                , agreedToTerms = f.agreedToTerms.output
+                                }
+                           )
+                        |> Expect.equal
+                            { name = Ok Nothing
+                            , email = Err (Uniform.ValidationFailed "Invalid email")
+                            , password = Err Uniform.RequiredFieldIsEmpty
+                            , repeatedPassword = Err (Uniform.ValidationFailed "The passwords should match")
+                            , plan = Err (Uniform.ValidationFailed "Wrong plan")
+                            , agreedToTerms = Err (Uniform.ValidationFailed "You must accept the terms")
+                            }
             ]
         ]
