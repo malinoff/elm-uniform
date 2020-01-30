@@ -142,19 +142,22 @@ field isEmpty config =
                     else
                         Result.mapError ValidationFailed (config.parser value_)
 
-                flipState =
-                    case config.state values of
+                ( value, state ) =
+                    config.value values
+
+                flipState state_ =
+                    case state_ of
                         Editing ->
                             Displaying
 
                         Displaying ->
                             Editing
             in
-            { value = config.value values
-            , updateValue = config.updateValue values
-            , state = config.state values
-            , updateState = flipState |> config.updateState values
-            , output = parse (config.value values)
+            { value = value
+            , updateValue = \newValue -> config.update values ( newValue, state )
+            , state = state
+            , updateState = config.update values ( value, flipState state )
+            , output = parse value
             }
 
 
@@ -164,20 +167,16 @@ field isEmpty config =
     It needs a function that processes the value of the field and produces a `Result` of either:
       - a `String` describing an error,
       - a correct `output`.
-  - `value` specifies how to get the value from `values`. Most of the time it will be in a form of `.fieldName`.
-  - `updateValue` specified how to update `values` with a new value.
-    Unfortunately, elm does not provide a special syntax for functions-setters like for getters, that's why
-    most of the time it will look like `\values value -> { values | fieldName = value }`
-  - `state` specifies how to get the current [`state`](#field-state) of the field, similarly to `value`.
-  - `updateState` is similar to `updateValue`, but updates the state.
+  - `value` specifies how to get the value and the state from `values`.
+    Most of the time it will be in a form of `.fieldName`.
+  - `update` specified how to update `values` with a new value and/or a new state.
+    Most of the time it will look like `\values value -> { values | fieldName = value }`
 
 -}
 type alias FieldConfig value output values =
     { parser : value -> Result String output
-    , value : values -> value
-    , updateValue : values -> value -> values
-    , state : values -> FieldState
-    , updateState : values -> FieldState -> values
+    , value : values -> ( value, FieldState )
+    , update : values -> ( value, FieldState ) -> values
     }
 
 

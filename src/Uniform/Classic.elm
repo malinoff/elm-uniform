@@ -35,10 +35,8 @@ field isEmpty config =
     Uniform.field
         isEmpty
         { parser = config.parser
-        , value = config.value
-        , updateValue = config.update
-        , state = always Editing
-        , updateState = always
+        , value = \values -> ( config.value values, Editing )
+        , update = \values ( value, _ ) -> config.update values value
         }
 
 
