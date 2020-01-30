@@ -3,7 +3,7 @@
     "name": "malinoff/elm-uniform",
     "summary": "Build type-safe composable, universal forms",
     "license": "AGPL-3.0",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "exposed-modules": [
         "Uniform",
         "Uniform.Classic"
